@@ -14,8 +14,10 @@ services:
       DATABASE_URL: ${DATABASE_URL:-sqlite:///./parking.db}
       AI_SHARED_SECRET: ${AI_SHARED_SECRET:-demo-secret}
       STATIC_DIR: /app/static
+      SLOT_CONFIG_PATH: ${SLOT_CONFIG_PATH:-/app/config/slot-config.json}
     volumes:
       - ./apps/backend-api:/app
+      - ./infra/slot-config.json:/app/config/slot-config.json:ro
     restart: unless-stopped
 
   ai-detection-service:
@@ -30,11 +32,15 @@ services:
       BACKEND_API_URL: ${BACKEND_API_URL:-http://backend-api:8000/api}
       AI_SHARED_SECRET: ${AI_SHARED_SECRET:-demo-secret}
       VIDEO_SOURCE: ${VIDEO_SOURCE:-./datasets/sample.mp4}
+      SLOT_CONFIG_PATH: ${SLOT_CONFIG_PATH:-/app/config/slot-config.json}
+      MOCK_MODE: ${MOCK_MODE:-true}
+      MOCK_INTERVAL_SECONDS: ${MOCK_INTERVAL_SECONDS:-2}
     ports:
       - "${AI_PORT:-9000}:9000"
     volumes:
       - ./apps/ai-detection-service:/app
       - ./datasets:/app/datasets
+      - ./infra/slot-config.json:/app/config/slot-config.json:ro
     restart: unless-stopped
 
   web-dashboard:
@@ -52,4 +58,3 @@ services:
     volumes:
       - ./apps/web-dashboard:/app
     restart: unless-stopped
-

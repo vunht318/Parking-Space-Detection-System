@@ -42,24 +42,39 @@ function App() {
   const [slots, setSlots] = useState<Slot[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [connectionStatus, setConnectionStatus] = useState("connecting");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
   const isAdminView = window.location.pathname.startsWith("/admin");
 
   useEffect(() => {
     const loadInitialData = async () => {
-      const [summaryResponse, slotsResponse, logsResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/summary`),
-        fetch(`${apiBaseUrl}/slots`),
-        fetch(`${apiBaseUrl}/logs`),
-      ]);
+      try {
+        setLoading(true);
+        setError("");
 
-      const summaryData = (await summaryResponse.json()) as Summary;
-      const slotsData = (await slotsResponse.json()) as { slots: Slot[] };
-      const logsData = (await logsResponse.json()) as { logs: LogEntry[] };
+        const [summaryResponse, slotsResponse, logsResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/summary`),
+          fetch(`${apiBaseUrl}/slots`),
+          fetch(`${apiBaseUrl}/logs`),
+        ]);
 
-      setSummary(summaryData);
-      setSlots(slotsData.slots);
-      setLogs(logsData.logs);
+        if (!summaryResponse.ok || !slotsResponse.ok || !logsResponse.ok) {
+          throw new Error("Cannot load dashboard data from backend.");
+        }
+
+        const summaryData = (await summaryResponse.json()) as Summary;
+        const slotsData = (await slotsResponse.json()) as { slots: Slot[] };
+        const logsData = (await logsResponse.json()) as { logs: LogEntry[] };
+
+        setSummary(summaryData);
+        setSlots(slotsData.slots);
+        setLogs(logsData.logs);
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : "Unknown error");
+      } finally {
+        setLoading(false);
+      }
     };
 
     void loadInitialData();
@@ -74,6 +89,7 @@ function App() {
 
     socket.onmessage = (event) => {
       const payload = JSON.parse(event.data) as WsPayload;
+      setError("");
       setSummary(payload.data.summary);
       setSlots(payload.data.slots);
       setLogs(payload.data.logs);
@@ -121,17 +137,25 @@ function App() {
             <h2>Parking Map</h2>
             <p>{isAdminView ? "Full slot monitoring view" : "Current slot availability"}</p>
           </div>
-          <div className="slot-grid">
-            {slots.map((slot) => (
-              <div
-                key={slot.slot_id}
-                className={`slot-card ${slot.occupied ? "slot-occupied" : "slot-vacant"}`}
-              >
-                <span className="slot-name">{slot.slot_id}</span>
-                <span className="slot-state">{slot.occupied ? "Occupied" : "Vacant"}</span>
-              </div>
-            ))}
-          </div>
+          {loading ? (
+            <div className="empty-state">Loading parking slots...</div>
+          ) : error ? (
+            <div className="error-state">{error}</div>
+          ) : slots.length === 0 ? (
+            <div className="empty-state">No slot data available.</div>
+          ) : (
+            <div className="slot-grid">
+              {slots.map((slot) => (
+                <div
+                  key={slot.slot_id}
+                  className={`slot-card ${slot.occupied ? "slot-occupied" : "slot-vacant"}`}
+                >
+                  <span className="slot-name">{slot.slot_id}</span>
+                  <span className="slot-state">{slot.occupied ? "Occupied" : "Vacant"}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </article>
 
         <article className="panel">
@@ -142,7 +166,11 @@ function App() {
 
           {isAdminView ? (
             <div className="log-list">
-              {logs.length === 0 ? (
+              {loading ? (
+                <div className="empty-state">Loading monitoring logs...</div>
+              ) : error ? (
+                <div className="error-state">{error}</div>
+              ) : logs.length === 0 ? (
                 <div className="empty-state">No updates received yet.</div>
               ) : (
                 logs

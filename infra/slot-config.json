@@ -1,0 +1,34 @@
+{
+  "parking_lot_id": "main-lot",
+  "camera_id": "cam-01",
+  "slots": [
+    {
+      "slot_id": "A-01",
+      "label": "A-01",
+      "area": "Zone A",
+      "default_occupied": false,
+      "display_order": 1
+    },
+    {
+      "slot_id": "A-02",
+      "label": "A-02",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 2
+    },
+    {
+      "slot_id": "A-03",
+      "label": "A-03",
+      "area": "Zone A",
+      "default_occupied": false,
+      "display_order": 3
+    },
+    {
+      "slot_id": "A-04",
+      "label": "A-04",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 4
+    }
+  ]
+}

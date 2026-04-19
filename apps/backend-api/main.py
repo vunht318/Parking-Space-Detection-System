@@ -1,5 +1,7 @@
+import json
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,13 +30,28 @@ class OccupancyUpdate(BaseModel):
     slots: list[SlotStatus]
 
 
-slot_state: dict[str, bool] = {
-    "A-01": False,
-    "A-02": True,
-    "A-03": False,
-    "A-04": True,
-}
+def load_slot_state() -> dict[str, bool]:
+    env_path = os.getenv("SLOT_CONFIG_PATH")
+    candidates = [
+        Path(env_path) if env_path else None,
+        Path(__file__).resolve().parent / "config" / "slot-config.json",
+        Path(__file__).resolve().parent.parent.parent / "infra" / "slot-config.json",
+    ]
 
+    config_path = next((path for path in candidates if path and path.exists()), None)
+    if config_path is None:
+        raise FileNotFoundError("slot-config.json not found")
+
+    with config_path.open("r", encoding="utf-8") as config_file:
+        slot_config = json.load(config_file)
+
+    return {
+        slot["slot_id"]: bool(slot.get("default_occupied", False))
+        for slot in slot_config.get("slots", [])
+    }
+
+
+slot_state: dict[str, bool] = load_slot_state()
 slot_logs: list[dict] = []
 
 
