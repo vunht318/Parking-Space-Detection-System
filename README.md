@@ -2,7 +2,7 @@
 
 Tai lieu chinh:
 
-- [docs/CODEX_EXECUTION_PLAN.md](docs/CODEX_EXECUTION_PLAN.md)
+- [docs/CLAUDE_EXECUTION_PLAN.md](docs/CLAUDE_EXECUTION_PLAN.md)
 - [docs/SYSTEM_BLUEPRINT.md](docs/SYSTEM_BLUEPRINT.md)
 - [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
 

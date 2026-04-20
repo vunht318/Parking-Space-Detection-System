@@ -1,3 +1,23 @@
+# macOS
+.DS_Store
+
+# Claude / AI
+CLAUDE.md
+docs/CLAUDE_EXECUTION_PLAN.md
+.claude/
+
+# AI model weights & training output
+*.pt
+*.pth
+*.onnx
+*.weights
+*.h5
+*.pkl
+*.joblib
+training/
+models/
+checkpoints/
+
 # Logs
 logs
 *.log
