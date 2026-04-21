@@ -1,6 +1,10 @@
 # macOS
 .DS_Store
 
+# Env files (chỉ giữ .env.example)
+.env
+apps/**/.env
+
 # Claude / AI
 CLAUDE.md
 docs/CLAUDE_EXECUTION_PLAN.md
