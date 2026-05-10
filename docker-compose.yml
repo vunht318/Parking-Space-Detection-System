@@ -31,16 +31,20 @@ services:
       PORT: 9000
       BACKEND_API_URL: ${BACKEND_API_URL:-http://backend-api:8000/api}
       AI_SHARED_SECRET: ${AI_SHARED_SECRET:-demo-secret}
-      VIDEO_SOURCE: ${VIDEO_SOURCE:-./datasets/sample.mp4}
+      VIDEO_PATH: ${VIDEO_PATH:-/app/datasets/carPark.mp4}
       SLOT_CONFIG_PATH: ${SLOT_CONFIG_PATH:-/app/config/slot-config.json}
+      SLOT_COORDINATES_PATH: ${SLOT_COORDINATES_PATH:-/app/config/slot-coordinates.json}
       MOCK_MODE: ${MOCK_MODE:-true}
       MOCK_INTERVAL_SECONDS: ${MOCK_INTERVAL_SECONDS:-2}
+      DETECTION_INTERVAL_SECONDS: ${DETECTION_INTERVAL_SECONDS:-2}
+      DETECTION_THRESHOLD: ${DETECTION_THRESHOLD:-0.25}
     ports:
       - "${AI_PORT:-9000}:9000"
     volumes:
       - ./apps/ai-detection-service:/app
       - ./datasets:/app/datasets
       - ./infra/slot-config.json:/app/config/slot-config.json:ro
+      - ./infra/slot-coordinates.json:/app/config/slot-coordinates.json:ro
     restart: unless-stopped
 
   web-dashboard:

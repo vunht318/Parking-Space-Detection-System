@@ -3,32 +3,312 @@
   "camera_id": "cam-01",
   "slots": [
     {
-      "slot_id": "A-01",
-      "label": "A-01",
+      "slot_id": "A-L01",
+      "label": "A-L01",
       "area": "Zone A",
-      "default_occupied": false,
+      "default_occupied": true,
       "display_order": 1
     },
     {
-      "slot_id": "A-02",
-      "label": "A-02",
+      "slot_id": "A-L02",
+      "label": "A-L02",
       "area": "Zone A",
       "default_occupied": true,
       "display_order": 2
     },
     {
-      "slot_id": "A-03",
-      "label": "A-03",
+      "slot_id": "A-L03",
+      "label": "A-L03",
       "area": "Zone A",
-      "default_occupied": false,
+      "default_occupied": true,
       "display_order": 3
     },
     {
-      "slot_id": "A-04",
-      "label": "A-04",
+      "slot_id": "A-L04",
+      "label": "A-L04",
       "area": "Zone A",
       "default_occupied": true,
       "display_order": 4
+    },
+    {
+      "slot_id": "A-L05",
+      "label": "A-L05",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 5
+    },
+    {
+      "slot_id": "A-L06",
+      "label": "A-L06",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 6
+    },
+    {
+      "slot_id": "A-L07",
+      "label": "A-L07",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 7
+    },
+    {
+      "slot_id": "A-L08",
+      "label": "A-L08",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 8
+    },
+    {
+      "slot_id": "A-L09",
+      "label": "A-L09",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 9
+    },
+    {
+      "slot_id": "A-L10",
+      "label": "A-L10",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 10
+    },
+    {
+      "slot_id": "A-R01",
+      "label": "A-R01",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 11
+    },
+    {
+      "slot_id": "A-R02",
+      "label": "A-R02",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 12
+    },
+    {
+      "slot_id": "A-R03",
+      "label": "A-R03",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 13
+    },
+    {
+      "slot_id": "A-R04",
+      "label": "A-R04",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 14
+    },
+    {
+      "slot_id": "A-R05",
+      "label": "A-R05",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 15
+    },
+    {
+      "slot_id": "A-R06",
+      "label": "A-R06",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 16
+    },
+    {
+      "slot_id": "A-R07",
+      "label": "A-R07",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 17
+    },
+    {
+      "slot_id": "A-R08",
+      "label": "A-R08",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 18
+    },
+    {
+      "slot_id": "A-R09",
+      "label": "A-R09",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 19
+    },
+    {
+      "slot_id": "A-R10",
+      "label": "A-R10",
+      "area": "Zone A",
+      "default_occupied": true,
+      "display_order": 20
+    },
+    {
+      "slot_id": "B-L01",
+      "label": "B-L01",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 21
+    },
+    {
+      "slot_id": "B-L02",
+      "label": "B-L02",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 22
+    },
+    {
+      "slot_id": "B-L03",
+      "label": "B-L03",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 23
+    },
+    {
+      "slot_id": "B-L04",
+      "label": "B-L04",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 24
+    },
+    {
+      "slot_id": "B-L05",
+      "label": "B-L05",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 25
+    },
+    {
+      "slot_id": "B-L06",
+      "label": "B-L06",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 26
+    },
+    {
+      "slot_id": "B-R01",
+      "label": "B-R01",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 27
+    },
+    {
+      "slot_id": "B-R02",
+      "label": "B-R02",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 28
+    },
+    {
+      "slot_id": "B-R03",
+      "label": "B-R03",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 29
+    },
+    {
+      "slot_id": "B-R04",
+      "label": "B-R04",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 30
+    },
+    {
+      "slot_id": "B-R05",
+      "label": "B-R05",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 31
+    },
+    {
+      "slot_id": "B-R06",
+      "label": "B-R06",
+      "area": "Zone B",
+      "default_occupied": true,
+      "display_order": 32
+    },
+    {
+      "slot_id": "C-L01",
+      "label": "C-L01",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 33
+    },
+    {
+      "slot_id": "C-L02",
+      "label": "C-L02",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 34
+    },
+    {
+      "slot_id": "C-L03",
+      "label": "C-L03",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 35
+    },
+    {
+      "slot_id": "C-L04",
+      "label": "C-L04",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 36
+    },
+    {
+      "slot_id": "C-L05",
+      "label": "C-L05",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 37
+    },
+    {
+      "slot_id": "C-L06",
+      "label": "C-L06",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 38
+    },
+    {
+      "slot_id": "C-R01",
+      "label": "C-R01",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 39
+    },
+    {
+      "slot_id": "C-R02",
+      "label": "C-R02",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 40
+    },
+    {
+      "slot_id": "C-R03",
+      "label": "C-R03",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 41
+    },
+    {
+      "slot_id": "C-R04",
+      "label": "C-R04",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 42
+    },
+    {
+      "slot_id": "C-R05",
+      "label": "C-R05",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 43
+    },
+    {
+      "slot_id": "C-R06",
+      "label": "C-R06",
+      "area": "Zone C",
+      "default_occupied": true,
+      "display_order": 44
     }
   ]
 }
