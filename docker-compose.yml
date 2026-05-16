@@ -34,10 +34,11 @@ services:
       VIDEO_PATH: ${VIDEO_PATH:-/app/datasets/carPark.mp4}
       SLOT_CONFIG_PATH: ${SLOT_CONFIG_PATH:-/app/config/slot-config.json}
       SLOT_COORDINATES_PATH: ${SLOT_COORDINATES_PATH:-/app/config/slot-coordinates.json}
-      MOCK_MODE: ${MOCK_MODE:-true}
+      MOCK_MODE: ${MOCK_MODE:-false}
       MOCK_INTERVAL_SECONDS: ${MOCK_INTERVAL_SECONDS:-2}
-      DETECTION_INTERVAL_SECONDS: ${DETECTION_INTERVAL_SECONDS:-2}
-      DETECTION_THRESHOLD: ${DETECTION_THRESHOLD:-0.25}
+      DETECTION_INTERVAL_SECONDS: ${DETECTION_INTERVAL_SECONDS:-0.02}
+      SHOW_VIDEO: ${SHOW_VIDEO:-false}
+      DETECTION_THRESHOLD: ${DETECTION_THRESHOLD:-0.75}
     ports:
       - "${AI_PORT:-9000}:9000"
     volumes:
@@ -57,6 +58,7 @@ services:
     environment:
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000/api}
       VITE_WS_URL: ${VITE_WS_URL:-ws://localhost:8000/ws}
+      VITE_REFRESH_INTERVAL_MS: ${VITE_REFRESH_INTERVAL_MS:-2000}
     ports:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:

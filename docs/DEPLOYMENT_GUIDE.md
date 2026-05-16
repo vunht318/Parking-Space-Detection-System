@@ -163,7 +163,9 @@ AI service:
 ```env
 BACKEND_API_URL=http://localhost:8000/api
 AI_SHARED_SECRET=demo-secret
-VIDEO_SOURCE=./datasets/sample.mp4
+MOCK_MODE=false
+VIDEO_PATH=./datasets/carPark.mp4
+SHOW_VIDEO=false
 ```
 
 ## 8.2. Luc deploy demo 1 URL
@@ -193,7 +195,9 @@ AI service:
 ```env
 BACKEND_API_URL=https://parking-demo.example.com/api
 AI_SHARED_SECRET=demo-secret
-VIDEO_SOURCE=./datasets/sample.mp4
+MOCK_MODE=false
+VIDEO_PATH=./datasets/carPark.mp4
+SHOW_VIDEO=false
 ```
 
 ## 9. CORS co can khong

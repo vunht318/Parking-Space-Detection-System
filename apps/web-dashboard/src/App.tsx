@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Slot = {
   slot_id: string;
@@ -29,6 +29,11 @@ type WsPayload = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 const wsUrl = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000/ws";
+const configuredRefreshIntervalMs = Number(import.meta.env.VITE_REFRESH_INTERVAL_MS ?? 2000);
+const refreshIntervalMs =
+  Number.isFinite(configuredRefreshIntervalMs) && configuredRefreshIntervalMs > 0
+    ? configuredRefreshIntervalMs
+    : 2000;
 
 const initialSummary: Summary = {
   total_slots: 0,
@@ -47,66 +52,103 @@ function App() {
 
   const isAdminView = window.location.pathname.startsWith("/admin");
 
-  useEffect(() => {
-    const loadInitialData = async () => {
-      try {
+  const loadDashboardData = useCallback(async ({ showLoading = false } = {}) => {
+    try {
+      if (showLoading) {
         setLoading(true);
-        setError("");
+      }
 
-        const [summaryResponse, slotsResponse, logsResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/summary`),
-          fetch(`${apiBaseUrl}/slots`),
-          fetch(`${apiBaseUrl}/logs`),
-        ]);
+      setError("");
 
-        if (!summaryResponse.ok || !slotsResponse.ok || !logsResponse.ok) {
-          throw new Error("Cannot load dashboard data from backend.");
-        }
+      const [summaryResponse, slotsResponse, logsResponse] = await Promise.all([
+        fetch(`${apiBaseUrl}/summary`),
+        fetch(`${apiBaseUrl}/slots`),
+        fetch(`${apiBaseUrl}/logs`),
+      ]);
 
-        const summaryData = (await summaryResponse.json()) as Summary;
-        const slotsData = (await slotsResponse.json()) as { slots: Slot[] };
-        const logsData = (await logsResponse.json()) as { logs: LogEntry[] };
+      if (!summaryResponse.ok || !slotsResponse.ok || !logsResponse.ok) {
+        throw new Error("Cannot load dashboard data from backend.");
+      }
 
-        setSummary(summaryData);
-        setSlots(slotsData.slots);
-        setLogs(logsData.logs);
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : "Unknown error");
-      } finally {
+      const summaryData = (await summaryResponse.json()) as Summary;
+      const slotsData = (await slotsResponse.json()) as { slots: Slot[] };
+      const logsData = (await logsResponse.json()) as { logs: LogEntry[] };
+
+      setSummary(summaryData);
+      setSlots(slotsData.slots);
+      setLogs(logsData.logs);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "Unknown error");
+    } finally {
+      if (showLoading) {
         setLoading(false);
       }
-    };
-
-    void loadInitialData();
+    }
   }, []);
 
   useEffect(() => {
-    const socket = new WebSocket(wsUrl);
+    void loadDashboardData({ showLoading: true });
+  }, [loadDashboardData]);
 
-    socket.onopen = () => {
-      setConnectionStatus("connected");
-    };
-
-    socket.onmessage = (event) => {
-      const payload = JSON.parse(event.data) as WsPayload;
-      setError("");
-      setSummary(payload.data.summary);
-      setSlots(payload.data.slots);
-      setLogs(payload.data.logs);
-    };
-
-    socket.onclose = () => {
-      setConnectionStatus("disconnected");
-    };
-
-    socket.onerror = () => {
-      setConnectionStatus("error");
-    };
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      void loadDashboardData();
+    }, refreshIntervalMs);
 
     return () => {
-      socket.close();
+      window.clearInterval(refreshTimer);
     };
-  }, []);
+  }, [loadDashboardData]);
+
+  useEffect(() => {
+    let socket: WebSocket | null = null;
+    let reconnectTimer: number | undefined;
+    let shouldReconnect = true;
+
+    const connect = () => {
+      setConnectionStatus("connecting");
+      socket = new WebSocket(wsUrl);
+
+      socket.onopen = () => {
+        setConnectionStatus("connected");
+        setError("");
+        void loadDashboardData();
+      };
+
+      socket.onmessage = (event) => {
+        const payload = JSON.parse(event.data) as WsPayload;
+        setError("");
+        setSummary(payload.data.summary);
+        setSlots(payload.data.slots);
+        setLogs(payload.data.logs);
+      };
+
+      socket.onclose = () => {
+        setConnectionStatus("disconnected");
+
+        if (shouldReconnect) {
+          reconnectTimer = window.setTimeout(connect, 1500);
+        }
+      };
+
+      socket.onerror = () => {
+        setConnectionStatus("error");
+        socket?.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      shouldReconnect = false;
+
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+
+      socket?.close();
+    };
+  }, [loadDashboardData]);
 
   return (
     <div className="page-shell">

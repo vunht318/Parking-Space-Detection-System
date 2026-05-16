@@ -81,8 +81,10 @@ pip install -r requirements.txt
 # Set required env vars
 export BACKEND_API_URL=http://localhost:8000/api
 export AI_SHARED_SECRET=demo-secret
-export MOCK_MODE=true
-export MOCK_INTERVAL_SECONDS=2
+export MOCK_MODE=false
+export VIDEO_PATH=../../datasets/carPark.mp4
+export DETECTION_INTERVAL_SECONDS=0.02
+export SHOW_VIDEO=true
 
 uvicorn main:app --reload --port 9000
 ```
@@ -110,12 +112,16 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `AI_PORT` | `9000` | AI service port |
 | `FRONTEND_PORT` | `5173` | Web dashboard port |
 | `AI_SHARED_SECRET` | `demo-secret` | Shared secret between AI service and backend |
-| `MOCK_MODE` | `true` | `true` = AI service sends fake data; `false` = real CV pipeline |
+| `MOCK_MODE` | `false` | `true` = AI service sends fake data; `false` = real CV pipeline |
 | `MOCK_INTERVAL_SECONDS` | `2` | How often mock data is pushed (seconds) |
+| `DETECTION_INTERVAL_SECONDS` | `0.02` | Delay between processed video frames; lower value makes playback and updates faster |
+| `DETECTION_THRESHOLD` | `0.75` | Slot change score needed to mark a slot occupied; higher value reduces false occupied detections |
+| `REFERENCE_IMAGE_PATH` | `./datasets/reference_median.png` | Empty/reference parking image used by the CV pipeline |
 | `BACKEND_API_URL` | `http://backend-api:8000/api` | Used by AI service to reach backend (Docker internal URL) |
 | `VITE_API_BASE_URL` | `http://localhost:8000/api` | Used by frontend to reach backend |
 | `VITE_WS_URL` | `ws://localhost:8000/ws` | WebSocket URL for frontend |
-| `VIDEO_SOURCE` | `./datasets/sample.mp4` | Video file path — reserved for real CV pipeline, not used in mock mode |
+| `VIDEO_PATH` | `./datasets/carPark.mp4` | Video file path used by the real CV pipeline |
+| `SHOW_VIDEO` | `false` | Show OpenCV debug window; keep `false` in Docker/headless environments |
 
 > **Note:** When running without Docker, set `BACKEND_API_URL=http://localhost:8000/api` so the AI service reaches the backend correctly.
 
@@ -140,7 +146,7 @@ curl http://localhost:8000/api/summary
 ```
 
 Expected behavior:
-- AI service (mock mode) auto-POSTs occupancy updates to backend every `MOCK_INTERVAL_SECONDS`
+- AI service reads frames from `VIDEO_PATH` and auto-POSTs occupancy updates to backend every `DETECTION_INTERVAL_SECONDS`
 - Backend updates slot state and broadcasts via WebSocket at `ws://localhost:8000/ws`
 - Dashboard loads initial state via REST, then receives live updates via WebSocket
 
