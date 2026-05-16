@@ -1,9 +1,7 @@
 import asyncio
 import json
-import logging
 import os
-import time
-from contextlib import suppress
+from contextlib import asynccontextmanager, suppress
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -14,14 +12,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-log = logging.getLogger(__name__)
-
-app = FastAPI(title="Parking AI Detection Service")
 publisher_task: asyncio.Task | None = None
-
-_reference_frame: np.ndarray | None = None   # empty-lot reference for background subtraction
-_demo_paused: bool = False
 
 
 class SlotStatus(BaseModel):
@@ -35,217 +26,283 @@ class OccupancyUpdate(BaseModel):
     slots: list[SlotStatus]
 
 
-class SyntheticDemoRequest(BaseModel):
-    vacant_slots: list[str]
-    hold_seconds: float = 10.0
+def project_root() -> Path:
+    return Path(__file__).resolve().parent.parent.parent
 
 
-# ---------------------------------------------------------------------------
-# Config loaders
-# ---------------------------------------------------------------------------
+def resolve_path(env_name: str, candidates: list[Path]) -> Path:
+    env_path = os.getenv(env_name)
 
-def _resolve_config_path(filename: str, env_var: str) -> Path:
-    env_path = os.getenv(env_var)
-    candidates = [
-        Path(env_path) if env_path else None,
-        Path(__file__).resolve().parent / "config" / filename,
-        Path(__file__).resolve().parent.parent.parent / "infra" / filename,
-        Path(__file__).resolve().parent.parent.parent / "datasets" / filename,
-    ]
-    path = next((p for p in candidates if p and p.exists()), None)
-    if path is None:
-        raise FileNotFoundError(f"{filename} not found")
-    return path
+    if env_path and Path(env_path).exists():
+        return Path(env_path)
+
+    for path in candidates:
+        if path.exists():
+            return path
+
+    raise FileNotFoundError(f"{env_name} not found")
+
+
+def load_json(path: Path) -> dict:
+    with path.open("r", encoding="utf-8") as file:
+        return json.load(file)
 
 
 def load_slot_config() -> dict:
-    with _resolve_config_path("slot-config.json", "SLOT_CONFIG_PATH").open(encoding="utf-8") as f:
-        return json.load(f)
+    root = project_root()
+
+    path = resolve_path(
+        "SLOT_CONFIG_PATH",
+        [
+            Path(__file__).resolve().parent / "config" / "slot-config.json",
+            root / "infra" / "slot-config.json",
+        ],
+    )
+
+    return load_json(path)
 
 
-def load_coordinates_file() -> dict:
-    path = _resolve_config_path("slot-coordinates.json", "SLOT_COORDINATES_PATH")
-    with path.open(encoding="utf-8") as f:
-        return json.load(f)
+def load_slot_coordinates() -> dict:
+    root = project_root()
+
+    path = resolve_path(
+        "SLOT_COORDINATES_PATH",
+        [
+            Path(__file__).resolve().parent / "config" / "slot-coordinates.json",
+            root / "infra" / "slot-coordinates.json",
+        ],
+    )
+
+    return load_json(path)
 
 
-def load_slot_coordinates() -> dict[str, tuple[int, int, int, int]]:
-    data = load_coordinates_file()
-    return {s["slot_id"]: (s["x"], s["y"], s["w"], s["h"]) for s in data["slots"]}
+def load_reference_image() -> np.ndarray:
+    root = project_root()
+
+    path = resolve_path(
+        "REFERENCE_IMAGE_PATH",
+        [
+            root / "datasets" / "emty.png",
+            root / "datasets" / "reference_empty.png",
+            root / "datasets" / "carParkImg.png",
+        ],
+    )
+
+    image = cv2.imread(str(path))
+
+    if image is None:
+        raise FileNotFoundError(f"Cannot read reference image: {path}")
+
+    return image
 
 
-def _resolve_video_path() -> Path:
-    env_path = os.getenv("VIDEO_PATH")
-    candidates = [
-        Path(env_path) if env_path else None,
-        Path(__file__).resolve().parent.parent.parent / "datasets" / "carPark.mp4",
-    ]
-    path = next((p for p in candidates if p and p.exists()), None)
-    if path is None:
-        raise FileNotFoundError("carPark.mp4 not found")
-    return path
+def load_video_path() -> Path:
+    root = project_root()
+
+    return resolve_path(
+        "VIDEO_PATH",
+        [
+            root / "datasets" / "carPark.mp4",
+        ],
+    )
 
 
-def _resolve_reference_path() -> Path | None:
-    env_path = os.getenv("REFERENCE_EMPTY_PATH")
-    candidates = [
-        Path(env_path) if env_path else None,
-        Path(__file__).resolve().parent.parent.parent / "datasets" / "reference_empty.png",
-    ]
-    return next((p for p in candidates if p and p.exists()), None)
+def scale_slot_rect(
+    slot: dict,
+    frame_width: int,
+    frame_height: int,
+    coord_width: int,
+    coord_height: int,
+) -> tuple[int, int, int, int]:
+    sx = frame_width / coord_width
+    sy = frame_height / coord_height
+
+    video_offset_x = int(os.getenv("VIDEO_OFFSET_X", "0"))
+    video_offset_y = int(os.getenv("VIDEO_OFFSET_Y", "5"))
+    video_scale_x = float(os.getenv("VIDEO_SCALE_X", "0.985"))
+    video_scale_y = float(os.getenv("VIDEO_SCALE_Y", "0.980"))
+
+    x = int(slot["x"] * sx * video_scale_x) + video_offset_x
+    y = int(slot["y"] * sy * video_scale_y) + video_offset_y
+    w = int(slot["w"] * sx * video_scale_x)
+    h = int(slot["h"] * sy * video_scale_y)
+
+    x = max(0, min(x, frame_width - 1))
+    y = max(0, min(y, frame_height - 1))
+    w = max(1, min(w, frame_width - x))
+    h = max(1, min(h, frame_height - y))
+
+    return x, y, w, h
 
 
-# ---------------------------------------------------------------------------
-# Detection logic — background subtraction
-# ---------------------------------------------------------------------------
 
-def detect_occupied_bg(
-    roi: np.ndarray,
-    ref_roi: np.ndarray,
-    pixel_threshold: int,
-    area_threshold: float,
-) -> bool:
-    """
-    Compare live ROI against the inpainted empty-reference ROI.
-    Pixels that changed significantly → likely a car is present.
-    """
-    diff = cv2.absdiff(roi, ref_roi)
-    gray = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-    _, binary = cv2.threshold(gray, pixel_threshold, 255, cv2.THRESH_BINARY)
-    changed_ratio = cv2.countNonZero(binary) / binary.size
-    return changed_ratio > area_threshold
+def detect_slot_occupied(frame_roi: np.ndarray, reference_roi: np.ndarray) -> tuple[bool, float]:
+    gray_frame = cv2.cvtColor(frame_roi, cv2.COLOR_BGR2GRAY)
+    gray_ref = cv2.cvtColor(reference_roi, cv2.COLOR_BGR2GRAY)
+
+    gray_frame = cv2.GaussianBlur(gray_frame, (5, 5), 0)
+    gray_ref = cv2.GaussianBlur(gray_ref, (5, 5), 0)
+
+    diff = cv2.absdiff(gray_frame, gray_ref)
+    _, threshold = cv2.threshold(diff, 35, 255, cv2.THRESH_BINARY)
+
+    changed_pixels = cv2.countNonZero(threshold)
+    total_pixels = threshold.shape[0] * threshold.shape[1]
+    score = changed_pixels / total_pixels
+
+    detection_threshold = float(os.getenv("DETECTION_THRESHOLD", "0.12"))
+    occupied = score >= detection_threshold
+
+    return occupied, score
 
 
-def analyze_frame(
-    frame: np.ndarray,
-    coordinates: dict[str, tuple[int, int, int, int]],
-    pixel_threshold: int,
-    area_threshold: float,
-) -> list[SlotStatus]:
-    ref = _reference_frame
-    results: list[SlotStatus] = []
-    for slot_id, (x, y, w, h) in coordinates.items():
-        roi = frame[y : y + h, x : x + w]
-        if roi.size == 0:
-            continue
-        if ref is not None:
-            ref_roi = ref[y : y + h, x : x + w]
-            occupied = detect_occupied_bg(roi, ref_roi, pixel_threshold, area_threshold)
-        else:
-            # Fallback: absolute texture density when no reference available
-            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-            thresh = cv2.adaptiveThreshold(
-                blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 25, 2
+def build_detection_payload(frame: np.ndarray, reference: np.ndarray) -> OccupancyUpdate:
+    slot_config = load_slot_config()
+    slot_coordinates = load_slot_coordinates()
+
+    frame_height, frame_width = frame.shape[:2]
+    coord_width = int(slot_coordinates.get("image_width", frame_width))
+    coord_height = int(slot_coordinates.get("image_height", frame_height))
+
+    if reference.shape[:2] != frame.shape[:2]:
+        reference = cv2.resize(reference, (frame_width, frame_height))
+
+    detected_slots: list[SlotStatus] = []
+
+    for slot in slot_coordinates.get("slots", []):
+        x, y, w, h = scale_slot_rect(
+            slot=slot,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            coord_width=coord_width,
+            coord_height=coord_height,
+        )
+
+        frame_roi = frame[y : y + h, x : x + w]
+        reference_roi = reference[y : y + h, x : x + w]
+
+        occupied, _score = detect_slot_occupied(frame_roi, reference_roi)
+
+        detected_slots.append(
+            SlotStatus(
+                slot_id=slot["slot_id"],
+                occupied=occupied,
             )
-            occupied = (cv2.countNonZero(thresh) / thresh.size) > area_threshold
-        results.append(SlotStatus(slot_id=slot_id, occupied=occupied))
-    return results
+        )
 
+    return OccupancyUpdate(
+        camera_id=slot_config.get("camera_id", "cam-01"),
+        timestamp=datetime.now(timezone.utc).isoformat(),
+        slots=detected_slots,
+    )
 
-# ---------------------------------------------------------------------------
-# Network
-# ---------------------------------------------------------------------------
 
 async def publish_payload(payload: OccupancyUpdate) -> dict:
-    backend_api_url = os.getenv("BACKEND_API_URL", "http://backend-api:8000/api")
+    backend_api_url = os.getenv("BACKEND_API_URL", "http://localhost:8000/api")
     shared_secret = os.getenv("AI_SHARED_SECRET", "demo-secret")
+
     async with httpx.AsyncClient(timeout=10.0) as client:
         response = await client.post(
             f"{backend_api_url}/occupancy/update",
             headers={"X-AI-Shared-Secret": shared_secret},
             json=payload.model_dump(),
         )
+
         response.raise_for_status()
         return response.json()
 
 
-# ---------------------------------------------------------------------------
-# Real detection loop
-# ---------------------------------------------------------------------------
+def draw_debug_overlay(frame: np.ndarray, payload: OccupancyUpdate) -> np.ndarray:
+    slot_coordinates = load_slot_coordinates()
 
-async def real_detection_loop() -> None:
-    global _reference_frame
+    frame_height, frame_width = frame.shape[:2]
+    coord_width = int(slot_coordinates.get("image_width", frame_width))
+    coord_height = int(slot_coordinates.get("image_height", frame_height))
 
-    interval = float(os.getenv("DETECTION_INTERVAL_SECONDS", "2"))
-    pixel_threshold = int(os.getenv("DETECTION_PIXEL_THRESHOLD", "30"))
-    area_threshold = float(os.getenv("DETECTION_AREA_THRESHOLD", "0.15"))
+    occupied_map = {slot.slot_id: slot.occupied for slot in payload.slots}
+    output = frame.copy()
 
-    slot_config = load_slot_config()
-    camera_id = slot_config.get("camera_id", "cam-01")
-    coordinates = load_slot_coordinates()
-    video_path = _resolve_video_path()
+    for slot in slot_coordinates.get("slots", []):
+        x, y, w, h = scale_slot_rect(
+            slot=slot,
+            frame_width=frame_width,
+            frame_height=frame_height,
+            coord_width=coord_width,
+            coord_height=coord_height,
+        )
 
-    # Load empty reference image
-    ref_path = _resolve_reference_path()
-    if ref_path:
-        _reference_frame = cv2.imread(str(ref_path))
-        log.info("Loaded empty reference: %s", ref_path.name)
-    else:
-        log.warning("reference_empty.png not found — falling back to texture density")
+        occupied = occupied_map.get(slot["slot_id"], False)
+        color = (0, 0, 255) if occupied else (0, 255, 0)
+
+        cv2.rectangle(output, (x, y), (x + w, y + h), color, 2)
+        cv2.putText(
+            output,
+            slot["slot_id"],
+            (x + 4, y + 18),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+
+    return output
+
+
+async def video_detection_loop() -> None:
+    video_path = load_video_path()
+    reference = load_reference_image()
+
+    interval_seconds = float(os.getenv("DETECTION_INTERVAL_SECONDS", "2"))
+    show_video = os.getenv("SHOW_VIDEO", "true").lower() == "true"
 
     cap = cv2.VideoCapture(str(video_path))
+
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
 
-    fps = cap.get(cv2.CAP_PROP_FPS) or 25
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    log.info(
-        "Video: %s | fps=%.1f | frames=%d | ref=%s | pixel_thr=%d | area_thr=%.2f",
-        video_path.name, fps, total_frames,
-        ref_path.name if ref_path else "none",
-        pixel_threshold, area_threshold,
-    )
+    try:
+        while True:
+            success, frame = cap.read()
 
-    frame_index = 0
-    last_log_time = time.monotonic()
+            if not success:
+                cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                await asyncio.sleep(0.2)
+                continue
 
-    while True:
-        ret, frame = cap.read()
-        if not ret:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            frame_index = 0
-            log.info("Video looped back to frame 0")
-            continue
+            payload = build_detection_payload(frame, reference)
 
-        frame_index += 1
-        now = time.monotonic()
-        if now - last_log_time >= 1.0:
-            log.info("Frame %d / %d", frame_index, total_frames)
-            last_log_time = now
-
-        if not _demo_paused:
-            slots = analyze_frame(frame, coordinates, pixel_threshold, area_threshold)
-            payload = OccupancyUpdate(
-                camera_id=camera_id,
-                timestamp=datetime.now(timezone.utc).isoformat(),
-                slots=slots,
-            )
             try:
                 await publish_payload(payload)
-            except Exception as exc:
-                log.warning("Publish failed: %s", exc)
+                print(f"Published {len(payload.slots)} slots at {payload.timestamp}")
+            except Exception as error:
+                print(f"Failed to publish detection payload: {error}")
 
-        await asyncio.sleep(interval)
+            if show_video:
+                debug_frame = draw_debug_overlay(frame, payload)
+                cv2.imshow("Parking Detection", debug_frame)
 
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
 
-# ---------------------------------------------------------------------------
-# Mock loop
-# ---------------------------------------------------------------------------
+            await asyncio.sleep(interval_seconds)
+
+    finally:
+        cap.release()
+
+        if show_video:
+            cv2.destroyAllWindows()
+
 
 def build_mock_payload(iteration: int = 0) -> OccupancyUpdate:
     slot_config = load_slot_config()
-    slots = [
-        SlotStatus(
-            slot_id=slot["slot_id"],
-            occupied=(
-                bool(slot.get("default_occupied", False))
-                if (iteration + idx) % 2 == 0
-                else not bool(slot.get("default_occupied", False))
-            ),
-        )
-        for idx, slot in enumerate(slot_config.get("slots", []))
-    ]
+    slots = []
+
+    for index, slot in enumerate(slot_config.get("slots", [])):
+        default_occupied = bool(slot.get("default_occupied", False))
+        occupied = default_occupied if (iteration + index) % 2 == 0 else not default_occupied
+        slots.append(SlotStatus(slot_id=slot["slot_id"], occupied=occupied))
+
     return OccupancyUpdate(
         camera_id=slot_config.get("camera_id", "cam-01"),
         timestamp=datetime.now(timezone.utc).isoformat(),
@@ -254,57 +311,55 @@ def build_mock_payload(iteration: int = 0) -> OccupancyUpdate:
 
 
 async def mock_publisher_loop() -> None:
-    interval = float(os.getenv("MOCK_INTERVAL_SECONDS", "2"))
+    interval_seconds = float(os.getenv("MOCK_INTERVAL_SECONDS", "2"))
     iteration = 0
+
     while True:
         payload = build_mock_payload(iteration)
+
         try:
             await publish_payload(payload)
-        except Exception:
-            pass
+            print(f"Published mock {len(payload.slots)} slots at {payload.timestamp}")
+        except Exception as error:
+            print(f"Failed to publish mock payload: {error}")
+
         iteration += 1
-        await asyncio.sleep(interval)
+        await asyncio.sleep(interval_seconds)
 
 
-# ---------------------------------------------------------------------------
-# Lifecycle
-# ---------------------------------------------------------------------------
-
-@app.on_event("startup")
-async def startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     global publisher_task
-    mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
+
+    mock_mode = os.getenv("MOCK_MODE", "false").lower() == "true"
+
     if mock_mode:
-        log.info("Starting in MOCK mode")
         publisher_task = asyncio.create_task(mock_publisher_loop())
     else:
-        log.info("Starting in REAL DETECTION mode (background subtraction)")
-        publisher_task = asyncio.create_task(real_detection_loop())
+        publisher_task = asyncio.create_task(video_detection_loop())
+
+    yield
+
+    if publisher_task is not None:
+        publisher_task.cancel()
+
+        with suppress(asyncio.CancelledError):
+            await publisher_task
+
+        publisher_task = None
 
 
-@app.on_event("shutdown")
-async def shutdown_event() -> None:
-    global publisher_task
-    if publisher_task is None:
-        return
-    publisher_task.cancel()
-    with suppress(asyncio.CancelledError):
-        await publisher_task
-    publisher_task = None
+app = FastAPI(title="Parking AI Detection Service", lifespan=lifespan)
 
-
-# ---------------------------------------------------------------------------
-# Endpoints
-# ---------------------------------------------------------------------------
 
 @app.get("/")
 def root():
-    mock_mode = os.getenv("MOCK_MODE", "true").lower() == "true"
     return {
         "service": "ai-detection-service",
-        "mode": "mock" if mock_mode else "real_detection",
-        "reference_loaded": _reference_frame is not None,
-        "backend_api_url": os.getenv("BACKEND_API_URL", "http://backend-api:8000/api"),
+        "message": "AI detection service is running",
+        "backend_api_url": os.getenv("BACKEND_API_URL", "http://localhost:8000/api"),
+        "mock_mode": os.getenv("MOCK_MODE", "false").lower() == "true",
+        "video_path": str(load_video_path()),
     }
 
 
@@ -313,81 +368,59 @@ def health():
     return {"status": "ok"}
 
 
-@app.get("/detection/status")
-def detection_status():
-    return {
-        "mode": "mock" if os.getenv("MOCK_MODE", "true").lower() == "true" else "real_detection",
-        "reference_loaded": _reference_frame is not None,
-        "pixel_threshold": int(os.getenv("DETECTION_PIXEL_THRESHOLD", "30")),
-        "area_threshold": float(os.getenv("DETECTION_AREA_THRESHOLD", "0.15")),
-        "interval_seconds": float(os.getenv("DETECTION_INTERVAL_SECONDS", "2")),
-    }
-
-
-@app.post("/demo/synthetic-vacant")
-async def demo_synthetic_vacant(request: SyntheticDemoRequest):
-    """Simulate vacant slots by comparing against reference, pause loop during hold."""
-    global _demo_paused
-
-    coordinates = load_slot_coordinates()
-    slot_config = load_slot_config()
-    camera_id = slot_config.get("camera_id", "cam-01")
-
-    video_path = _resolve_video_path()
-    cap = cv2.VideoCapture(str(video_path))
-    ret, frame = cap.read()
-    cap.release()
-    if not ret:
-        return {"error": "Cannot read video frame"}
-
-    pixel_threshold = int(os.getenv("DETECTION_PIXEL_THRESHOLD", "30"))
-    area_threshold = float(os.getenv("DETECTION_AREA_THRESHOLD", "0.15"))
-
-    # Clear requested slots in the live frame using lane texture
-    synthetic = frame.copy()
-    ref_path = _resolve_reference_path()
-    ref = cv2.imread(str(ref_path)) if ref_path else None
-    if ref is not None:
-        for slot_id in request.vacant_slots:
-            if slot_id in coordinates:
-                x, y, w, h = coordinates[slot_id]
-                synthetic[y : y + h, x : x + w] = ref[y : y + h, x : x + w]
-
-    slots = analyze_frame(synthetic, coordinates, pixel_threshold, area_threshold)
-
-    payload = OccupancyUpdate(
-        camera_id=camera_id,
-        timestamp=datetime.now(timezone.utc).isoformat(),
-        slots=slots,
-    )
-
-    _demo_paused = True
-    backend_response = await publish_payload(payload)
-    log.info("Demo: pausing loop for %.0fs", request.hold_seconds)
-    asyncio.get_event_loop().call_later(request.hold_seconds, _resume_detection)
-
-    return {
-        "requested_vacant": request.vacant_slots,
-        "detected_vacant": [s.slot_id for s in slots if not s.occupied],
-        "detected_occupied": [s.slot_id for s in slots if s.occupied],
-        "hold_seconds": request.hold_seconds,
-        "backend_response": backend_response,
-    }
-
-
-def _resume_detection() -> None:
-    global _demo_paused
-    _demo_paused = False
-    log.info("Demo hold ended — resuming real detection")
-
-
 @app.get("/sample-payload")
 def sample_payload():
-    return build_mock_payload().model_dump()
+    video_path = load_video_path()
+    reference = load_reference_image()
+
+    cap = cv2.VideoCapture(str(video_path))
+    success, frame = cap.read()
+    cap.release()
+
+    if not success:
+        raise RuntimeError(f"Cannot read first frame from video: {video_path}")
+
+    return build_detection_payload(frame, reference).model_dump()
+
+
+@app.get("/mock/status")
+def mock_status():
+    return {
+        "mock_mode": os.getenv("MOCK_MODE", "false").lower() == "true",
+        "mock_interval_seconds": float(os.getenv("MOCK_INTERVAL_SECONDS", "2")),
+        "detection_interval_seconds": float(os.getenv("DETECTION_INTERVAL_SECONDS", "2")),
+        "detection_threshold": float(os.getenv("DETECTION_THRESHOLD", "0.12")),
+        "backend_api_url": os.getenv("BACKEND_API_URL", "http://localhost:8000/api"),
+    }
 
 
 @app.post("/mock/run-once")
 async def run_mock_once():
     payload = build_mock_payload()
     backend_response = await publish_payload(payload)
-    return {"payload": payload.model_dump(), "backend_response": backend_response}
+
+    return {
+        "payload": payload.model_dump(),
+        "backend_response": backend_response,
+    }
+
+
+@app.post("/detect/run-once")
+async def run_detection_once():
+    video_path = load_video_path()
+    reference = load_reference_image()
+
+    cap = cv2.VideoCapture(str(video_path))
+    success, frame = cap.read()
+    cap.release()
+
+    if not success:
+        raise RuntimeError(f"Cannot read first frame from video: {video_path}")
+
+    payload = build_detection_payload(frame, reference)
+    backend_response = await publish_payload(payload)
+
+    return {
+        "payload": payload.model_dump(),
+        "backend_response": backend_response,
+    }
