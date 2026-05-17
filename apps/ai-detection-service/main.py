@@ -66,7 +66,6 @@ def load_reference_image() -> np.ndarray:
         "REFERENCE_IMAGE_PATH",
         [
             _ROOT / "datasets" / "emty.png",
-            _ROOT / "datasets" / "reference_empty.png",
             _ROOT / "datasets" / "carParkImg.png",
         ],
     )
@@ -129,10 +128,12 @@ def detect_slot_occupied(frame_roi: np.ndarray, reference_roi: np.ndarray) -> tu
     return occupied, score
 
 
-def build_detection_payload(frame: np.ndarray, reference: np.ndarray) -> OccupancyUpdate:
-    slot_config = load_slot_config()
-    slot_coordinates = load_slot_coordinates()
-
+def build_detection_payload(
+    frame: np.ndarray,
+    reference: np.ndarray,
+    slot_config: dict,
+    slot_coordinates: dict,
+) -> OccupancyUpdate:
     frame_height, frame_width = frame.shape[:2]
     coord_width = int(slot_coordinates.get("image_width", frame_width))
     coord_height = int(slot_coordinates.get("image_height", frame_height))
@@ -185,9 +186,11 @@ async def publish_payload(payload: OccupancyUpdate) -> dict:
         return response.json()
 
 
-def draw_debug_overlay(frame: np.ndarray, payload: OccupancyUpdate) -> np.ndarray:
-    slot_coordinates = load_slot_coordinates()
-
+def draw_debug_overlay(
+    frame: np.ndarray,
+    payload: OccupancyUpdate,
+    slot_coordinates: dict,
+) -> np.ndarray:
     frame_height, frame_width = frame.shape[:2]
     coord_width = int(slot_coordinates.get("image_width", frame_width))
     coord_height = int(slot_coordinates.get("image_height", frame_height))
@@ -225,8 +228,10 @@ def draw_debug_overlay(frame: np.ndarray, payload: OccupancyUpdate) -> np.ndarra
 async def video_detection_loop() -> None:
     video_path = load_video_path()
     reference = load_reference_image()
+    slot_config = load_slot_config()
+    slot_coordinates = load_slot_coordinates()
 
-    interval_seconds = float(os.getenv("DETECTION_INTERVAL_SECONDS", "2"))
+    detect_interval = float(os.getenv("DETECTION_INTERVAL_SECONDS", "0.5"))
     show_video = os.getenv("SHOW_VIDEO", "true").lower() == "true"
 
     cap = cv2.VideoCapture(str(video_path))
@@ -234,31 +239,44 @@ async def video_detection_loop() -> None:
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
 
+    video_fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
+    frame_interval = 1.0 / video_fps
+    detect_every_n = max(1, round(video_fps * detect_interval))
+
+    loop = asyncio.get_event_loop()
+    frame_count = 0
+    last_payload: OccupancyUpdate | None = None
+
     try:
         while True:
+            t0 = loop.time()
             success, frame = cap.read()
 
             if not success:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                await asyncio.sleep(0.2)
+                frame_count = 0
+                await asyncio.sleep(0.1)
                 continue
 
-            payload = build_detection_payload(frame, reference)
+            frame_count += 1
 
-            try:
-                await publish_payload(payload)
-                print(f"Published {len(payload.slots)} slots at {payload.timestamp}")
-            except Exception as error:
-                print(f"Failed to publish detection payload: {error}")
+            if frame_count % detect_every_n == 0:
+                last_payload = build_detection_payload(frame, reference, slot_config, slot_coordinates)
+                try:
+                    await publish_payload(last_payload)
+                    print(f"Published {len(last_payload.slots)} slots at {last_payload.timestamp}")
+                except Exception as error:
+                    print(f"Failed to publish detection payload: {error}")
 
             if show_video:
-                debug_frame = draw_debug_overlay(frame, payload)
-                cv2.imshow("Parking Detection", debug_frame)
-
+                if last_payload is not None:
+                    debug_frame = draw_debug_overlay(frame, last_payload, slot_coordinates)
+                    cv2.imshow("Parking Detection", debug_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     break
 
-            await asyncio.sleep(interval_seconds)
+            elapsed = loop.time() - t0
+            await asyncio.sleep(max(0.0, frame_interval - elapsed))
 
     finally:
         cap.release()
@@ -267,8 +285,7 @@ async def video_detection_loop() -> None:
             cv2.destroyAllWindows()
 
 
-def build_mock_payload(iteration: int = 0) -> OccupancyUpdate:
-    slot_config = load_slot_config()
+def build_mock_payload(slot_config: dict, iteration: int = 0) -> OccupancyUpdate:
     slots = []
 
     for index, slot in enumerate(slot_config.get("slots", [])):
@@ -284,11 +301,12 @@ def build_mock_payload(iteration: int = 0) -> OccupancyUpdate:
 
 
 async def mock_publisher_loop() -> None:
+    slot_config = load_slot_config()
     interval_seconds = float(os.getenv("MOCK_INTERVAL_SECONDS", "2"))
     iteration = 0
 
     while True:
-        payload = build_mock_payload(iteration)
+        payload = build_mock_payload(slot_config, iteration)
 
         try:
             await publish_payload(payload)
@@ -353,7 +371,7 @@ def sample_payload():
     if not success:
         raise RuntimeError(f"Cannot read first frame from video: {video_path}")
 
-    return build_detection_payload(frame, reference).model_dump()
+    return build_detection_payload(frame, reference, load_slot_config(), load_slot_coordinates()).model_dump()
 
 
 @app.get("/mock/status")
@@ -361,7 +379,7 @@ def mock_status():
     return {
         "mock_mode": os.getenv("MOCK_MODE", "false").lower() == "true",
         "mock_interval_seconds": float(os.getenv("MOCK_INTERVAL_SECONDS", "2")),
-        "detection_interval_seconds": float(os.getenv("DETECTION_INTERVAL_SECONDS", "2")),
+        "detection_interval_seconds": float(os.getenv("DETECTION_INTERVAL_SECONDS", "0.5")),
         "detection_threshold": float(os.getenv("DETECTION_THRESHOLD", "0.12")),
         "backend_api_url": os.getenv("BACKEND_API_URL", "http://localhost:8000/api"),
     }
@@ -369,7 +387,7 @@ def mock_status():
 
 @app.post("/mock/run-once")
 async def run_mock_once():
-    payload = build_mock_payload()
+    payload = build_mock_payload(load_slot_config())
     backend_response = await publish_payload(payload)
 
     return {
@@ -390,7 +408,7 @@ async def run_detection_once():
     if not success:
         raise RuntimeError(f"Cannot read first frame from video: {video_path}")
 
-    payload = build_detection_payload(frame, reference)
+    payload = build_detection_payload(frame, reference, load_slot_config(), load_slot_coordinates())
     backend_response = await publish_payload(payload)
 
     return {

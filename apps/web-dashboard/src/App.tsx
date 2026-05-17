@@ -29,11 +29,6 @@ type WsPayload = {
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api";
 const wsUrl = import.meta.env.VITE_WS_URL ?? "ws://localhost:8000/ws";
-const configuredRefreshIntervalMs = Number(import.meta.env.VITE_REFRESH_INTERVAL_MS ?? 2000);
-const refreshIntervalMs =
-  Number.isFinite(configuredRefreshIntervalMs) && configuredRefreshIntervalMs > 0
-    ? configuredRefreshIntervalMs
-    : 2000;
 
 const initialSummary: Summary = {
   total_slots: 0,
@@ -88,16 +83,6 @@ function App() {
 
   useEffect(() => {
     void loadDashboardData({ showLoading: true });
-  }, [loadDashboardData]);
-
-  useEffect(() => {
-    const refreshTimer = window.setInterval(() => {
-      void loadDashboardData();
-    }, refreshIntervalMs);
-
-    return () => {
-      window.clearInterval(refreshTimer);
-    };
   }, [loadDashboardData]);
 
   useEffect(() => {

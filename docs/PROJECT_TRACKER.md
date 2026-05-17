@@ -199,7 +199,7 @@ Format status: `Open` | `In Progress` | `Fixed` | `Won't Fix`
 
 | ID | Phát hiện | Mô tả | Triệu chứng | Root cause | Fix | Status |
 |---|---|---|---|---|---|---|
-| BUG-01 | 2026-05-17 | WebSocket không hoạt động | Status pill cycling `Disconnected → Connecting` liên tục, log báo `No supported WebSocket library detected`, `GET /ws 404` | `uvicorn` cài thông thường thiếu WebSocket support, cần bản `standard` | `pip install 'uvicorn[standard]'` trong venv backend-api rồi restart | Open |
+| BUG-01 | 2026-05-17 | WebSocket không hoạt động | Status pill cycling `Disconnected → Connecting` liên tục, log báo `No supported WebSocket library detected`, `GET /ws 404` | `uvicorn` cài thông thường thiếu WebSocket support, cần bản `standard` | Đổi `requirements.txt` thành `uvicorn[standard]==0.35.0`, install lại venv backend-api, restart server | Fixed |
 
 ---
 
