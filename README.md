@@ -114,7 +114,8 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `AI_SHARED_SECRET` | `demo-secret` | Shared secret between AI service and backend |
 | `MOCK_MODE` | `false` | `true` = AI service sends fake data; `false` = real CV pipeline |
 | `MOCK_INTERVAL_SECONDS` | `2` | How often mock data is pushed (seconds) |
-| `DETECTION_INTERVAL_SECONDS` | `0.5` | Delay between processed video frames; lower value makes playback and updates faster |
+| `DETECTION_INTERVAL_SECONDS` | `0.5` | How often a detection result is sent to backend (seconds of wall-clock time) |
+| `VIDEO_PLAYBACK_SPEED` | `1.0` | Video playback multiplier — `0.5` plays at half speed (56s loop), `0.25` at quarter speed (112s loop); detection rate scales accordingly |
 | `DETECTION_THRESHOLD` | `0.75` | Slot change score needed to mark a slot occupied; higher value reduces false occupied detections |
 | `REFERENCE_IMAGE_PATH` | `./datasets/emty.png` | Empty/reference parking image used by the CV pipeline |
 | `BACKEND_API_URL` | `http://backend-api:8000/api` | Used by AI service to reach backend (Docker internal URL) |

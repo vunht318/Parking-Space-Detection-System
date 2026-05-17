@@ -8,8 +8,11 @@ from pathlib import Path
 import cv2
 import httpx
 import numpy as np
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from pydantic import BaseModel
+
+load_dotenv(Path(__file__).resolve().parent.parent.parent / ".env")
 
 
 publisher_task: asyncio.Task | None = None
@@ -232,6 +235,7 @@ async def video_detection_loop() -> None:
     slot_coordinates = load_slot_coordinates()
 
     detect_interval = float(os.getenv("DETECTION_INTERVAL_SECONDS", "0.5"))
+    playback_speed = float(os.getenv("VIDEO_PLAYBACK_SPEED", "1.0"))
     show_video = os.getenv("SHOW_VIDEO", "true").lower() == "true"
 
     cap = cv2.VideoCapture(str(video_path))
@@ -240,8 +244,8 @@ async def video_detection_loop() -> None:
         raise RuntimeError(f"Cannot open video: {video_path}")
 
     video_fps = cap.get(cv2.CAP_PROP_FPS) or 24.0
-    frame_interval = 1.0 / video_fps
-    detect_every_n = max(1, round(video_fps * detect_interval))
+    frame_interval = 1.0 / (video_fps * playback_speed)
+    detect_every_n = max(1, round(video_fps * detect_interval * playback_speed))
 
     loop = asyncio.get_event_loop()
     frame_count = 0
