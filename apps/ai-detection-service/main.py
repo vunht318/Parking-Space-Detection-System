@@ -26,20 +26,17 @@ class OccupancyUpdate(BaseModel):
     slots: list[SlotStatus]
 
 
-def project_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
+_HERE = Path(__file__).resolve().parent
+_ROOT = _HERE.parent.parent
 
 
 def resolve_path(env_name: str, candidates: list[Path]) -> Path:
     env_path = os.getenv(env_name)
-
     if env_path and Path(env_path).exists():
         return Path(env_path)
-
     for path in candidates:
         if path.exists():
             return path
-
     raise FileNotFoundError(f"{env_name} not found")
 
 
@@ -48,63 +45,39 @@ def load_json(path: Path) -> dict:
         return json.load(file)
 
 
-def load_slot_config() -> dict:
-    root = project_root()
-
-    path = resolve_path(
-        "SLOT_CONFIG_PATH",
-        [
-            Path(__file__).resolve().parent / "config" / "slot-config.json",
-            root / "infra" / "slot-config.json",
-        ],
-    )
-
+def _load_config_json(env_name: str, filename: str) -> dict:
+    path = resolve_path(env_name, [
+        _HERE / "config" / filename,
+        _ROOT / "infra" / filename,
+    ])
     return load_json(path)
+
+
+def load_slot_config() -> dict:
+    return _load_config_json("SLOT_CONFIG_PATH", "slot-config.json")
 
 
 def load_slot_coordinates() -> dict:
-    root = project_root()
-
-    path = resolve_path(
-        "SLOT_COORDINATES_PATH",
-        [
-            Path(__file__).resolve().parent / "config" / "slot-coordinates.json",
-            root / "infra" / "slot-coordinates.json",
-        ],
-    )
-
-    return load_json(path)
+    return _load_config_json("SLOT_COORDINATES_PATH", "slot-coordinates.json")
 
 
 def load_reference_image() -> np.ndarray:
-    root = project_root()
-
     path = resolve_path(
         "REFERENCE_IMAGE_PATH",
         [
-            root / "datasets" / "emty.png",
-            root / "datasets" / "reference_empty.png",
-            root / "datasets" / "carParkImg.png",
+            _ROOT / "datasets" / "emty.png",
+            _ROOT / "datasets" / "reference_empty.png",
+            _ROOT / "datasets" / "carParkImg.png",
         ],
     )
-
     image = cv2.imread(str(path))
-
     if image is None:
         raise FileNotFoundError(f"Cannot read reference image: {path}")
-
     return image
 
 
 def load_video_path() -> Path:
-    root = project_root()
-
-    return resolve_path(
-        "VIDEO_PATH",
-        [
-            root / "datasets" / "carPark.mp4",
-        ],
-    )
+    return resolve_path("VIDEO_PATH", [_ROOT / "datasets" / "carPark.mp4"])
 
 
 def scale_slot_rect(

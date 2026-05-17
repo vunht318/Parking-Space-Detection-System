@@ -1,4 +1,6 @@
-# Parking Space Detection System - Tech Structure & Implementation Blueprint
+# System Blueprint
+
+> Theo doi tien do implement tai: [PROJECT_TRACKER.md](./PROJECT_TRACKER.md)
 
 ## 1. Muc tieu tai lieu
 
@@ -481,57 +483,7 @@ Man hinh Admin:
 - Xem danh sach slot
 - Xem log cap nhat gan day
 
-## 10. Danh sach cong viec can lam
-
-## 10.1. Cong viec khoi dong
-
-1. Chot huong camera-based cho MVP
-2. Thu thap video/anh mau de test
-3. Ve layout bai xe va danh dau parking slots
-4. Chot monorepo structure
-5. Chot stack backend/frontend
-
-## 10.2. Cong viec AI
-
-1. Tao service doc video
-2. Tich hop model detect xe
-3. Tao file slot config
-4. Viet logic xac dinh occupied/vacant
-5. Xuat ket qua thanh JSON
-
-## 10.3. Cong viec backend
-
-1. Khoi tao API service
-2. Tao API nhan occupancy update
-3. Tao API lay du lieu slot
-4. Tao websocket realtime
-5. Luu log thay doi trang thai
-
-## 10.4. Cong viec frontend
-
-1. Khoi tao web dashboard
-2. Ve layout bai xe
-3. Hien thi mau sac trang thai tung slot
-4. Hien thi summary tong so cho trong
-5. Ket noi websocket realtime
-6. Tao trang user va trang admin
-
-## 10.5. Cong viec infra
-
-1. Tao Dockerfile cho tung service
-2. Tao `docker-compose.yml`
-3. Tao file `.env.example`
-
-## 11. Roadmap ngan han de bat dau ngay
-
-1. Tao cau truc monorepo gom `ai-detection-service`, `backend-api`, `web-dashboard`
-2. Chuan bi 1 video test va file cau hinh parking slots
-3. Viet AI service xuat trang thai slot tu video
-4. Viet backend nhan JSON va phat realtime
-5. Viet web hien thi layout + summary
-6. Hoan thien demo user/admin tren cung mot he thong web
-
-## 12. Ket luan
+## 10. Ket luan
 
 Voi pham vi do an hoc tap, huong trien khai hop ly nhat la:
 
